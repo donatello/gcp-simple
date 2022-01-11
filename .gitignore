@@ -1,23 +1,57 @@
-dist
-dist-*
-cabal-dev
-*.o
-*.hi
-*.hie
+### Haskell
+*.aux
 *.chi
 *.chs.h
-*.dyn_o
 *.dyn_hi
+*.dyn_o
+*.eventlog
+*.hi
+*.hie
+*.hp
+*.o
+*.prof
+.HTF/
+.cabal-sandbox/
+.ghc.environment.*
 .hpc
 .hsenv
-.cabal-sandbox/
-cabal.sandbox.config
-*.prof
-*.aux
-*.hp
-*.eventlog
 .stack-work/
+.virtualenv
+cabal-dev
+cabal.config
 cabal.project.local
 cabal.project.local~
-.HTF/
-.ghc.environment.*
+cabal.sandbox.config
+dist
+dist-*
+# Stack
+.stack-work/
+stack.yaml.lock
+
+### IDE/support
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-v][a-z]
+[._]sw[a-p]
+*~
+tags
+
+# IntellijIDEA
+.idea/
+.ideaHaskellLib/
+*.iml
+
+# Atom
+.haskell-ghc-mod.json
+
+# VS
+.vscode/
+
+# Emacs
+*#
+.dir-locals.el
+TAGS
+
+# other
+.DS_Store
