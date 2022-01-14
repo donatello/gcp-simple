@@ -1,13 +1,28 @@
 -- |
--- Copyright: (c) 2022 Aditya Manthramurthy
+-- Module: Network.GCP.Simple
 -- SPDX-License-Identifier: Apache-2.0
--- Maintainer: Aditya Manthramurthy <aditya.mmy@gmail.com>
 --
 -- A simple library for Google Compute Platform
 module Network.GCP.Simple
-  ( someFunc,
+  ( Credentials (..),
+    initGHandleFromServiceAccountFile,
   )
 where
 
-someFunc :: IO ()
-someFunc = putStrLn ("someFunc" :: String)
+import Network.GCP.Auth.Credentials
+import UnliftIO (MonadUnliftIO, throwIO)
+
+data GHandle = GHandle
+  { gHandleCredentials :: Credentials,
+    gHandleStore :: Store
+  }
+
+initGHandleFromServiceAccountFile :: (MonadUnliftIO m) => FilePath -> Scopes -> m GHandle
+initGHandleFromServiceAccountFile f scopes = do
+  c <- fromFilePath f
+  s <- initStore c scopes
+  return $
+    GHandle
+      { gHandleCredentials = c,
+        gHandleStore = s
+      }

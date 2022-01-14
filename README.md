@@ -5,3 +5,13 @@
 [![Apache-2.0 license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 A simple library for Google Compute Platform
+
+# Build
+
+```shell
+
+cabal build -w ghc-8.8.4
+# OR
+cabal build -w ghc-8.10.7
+
+```
