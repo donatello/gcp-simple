@@ -24,6 +24,7 @@ source-repository head
 common common-options
   build-depends:       base >= 4.13.0.0 && < 4.15
                      , aeson ^>= 2.0.3.0
+                     , conduit ^>= 1.3.4.2
                      , cryptonite ^>= 0.29
                      , directory ^>= 1.3.6.0
                      , http-client ^>= 0.7.9
@@ -75,6 +76,7 @@ library
   import:              common-options
   hs-source-dirs:      src
   exposed-modules:     Network.GCP.Simple
+                     , Network.GCP.Storage
   other-modules:       Network.GCP.Auth.Credentials
                      , Network.GCP.Errors
 

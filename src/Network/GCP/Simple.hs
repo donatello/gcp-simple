@@ -6,6 +6,9 @@
 module Network.GCP.Simple
   ( Credentials (..),
     initGHandleFromServiceAccountFile,
+    MonadGSimple (..),
+    GHandle,
+    runGSimpleMonad,
   )
 where
 
@@ -26,3 +29,30 @@ initGHandleFromServiceAccountFile f scopes = do
       { gHandleCredentials = c,
         gHandleStore = s
       }
+
+-- class HasGHandle b where
+--   getGHandle :: b -> GHandle
+
+-- instance HasGHandle GHandle where
+--   getGHandle = identity
+
+class MonadUnliftIO m => MonadGSimple m where
+  getGHandleM :: m GHandle
+
+newtype GSimpleMonad a = GSimpleMonad
+  { unGSimpleMonad :: ReaderT GHandle IO a
+  }
+  deriving newtype
+    ( Functor,
+      Applicative,
+      Monad,
+      MonadIO,
+      MonadReader GHandle,
+      MonadUnliftIO
+    )
+
+runGSimpleMonad ::
+  GHandle ->
+  GSimpleMonad a ->
+  IO a
+runGSimpleMonad h = flip runReaderT h . unGSimpleMonad
