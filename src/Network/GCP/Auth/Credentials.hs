@@ -16,6 +16,8 @@ module Network.GCP.Auth.Credentials
     retrieveTokenFromStore,
     mkBearerJWT,
     OAuthScope (..),
+    OAuthToken (..),
+    AccessToken (..),
     Store,
     Scopes (..),
   )
