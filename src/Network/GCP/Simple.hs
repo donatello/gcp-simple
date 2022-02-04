@@ -7,7 +7,7 @@ module Network.GCP.Simple
   ( Credentials (..),
     initGHandleFromServiceAccountFile,
     MonadGSimple (..),
-    GHandle,
+    GHandle (..),
     runGSimpleMonad,
   )
 where
@@ -50,6 +50,9 @@ newtype GSimpleMonad a = GSimpleMonad
       MonadReader GHandle,
       MonadUnliftIO
     )
+
+instance MonadGSimple GSimpleMonad where
+  getGHandleM = ask
 
 runGSimpleMonad ::
   GHandle ->
