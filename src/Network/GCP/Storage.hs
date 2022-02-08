@@ -6,14 +6,12 @@
 --
 -- A simple library for Google Storage.
 module Network.GCP.Storage
-  ( GetObjectOptions,
-    defaultGetObjectOptions,
-    Stream,
+  ( Stream,
+    GetObjectReq,
     getObject,
+    InsertObjectReq,
     putObject,
     ObjectBody (..),
-    PutObjectOptions,
-    defaultPutObjectOptions,
   )
 where
 
@@ -46,27 +44,73 @@ import Network.HTTP.Req
     (/:),
     (=:),
   )
+import qualified Network.HTTP.Req as Req
 import Network.HTTP.Req.Conduit (responseBodySource)
-
-data GetObjectOptions = GetObjectOptions {}
-  deriving stock (Eq, Show)
-
-defaultGetObjectOptions :: GetObjectOptions
-defaultGetObjectOptions = GetObjectOptions {}
+import Web.HttpApiData (FromHttpApiData (..), ToHttpApiData (..))
 
 type Stream = ConduitT () ByteString (ResourceT IO) ()
+
+-- | Set of properties to return. Defaults to noAcl.
+data Projection
+  = -- | @full@
+    -- Include all properties.
+    PFull
+  | -- | @noAcl@
+    -- Omit the owner, acl property.
+    PNoACL
+  deriving stock (Eq, Ord, Enum, Read, Show, Generic)
+
+instance Hashable Projection
+
+instance FromHttpApiData Projection where
+  parseQueryParam = \case
+    "full" -> Right PFull
+    "noAcl" -> Right PNoACL
+    x -> Left ("Unable to parse ObjectsGetProjection from: " <> x)
+
+instance ToHttpApiData Projection where
+  toQueryParam = \case
+    PFull -> "full"
+    PNoACL -> "noAcl"
+
+-- | Used to retrieve an object or its metadata.
+data GetObjectReq = GetObjectReq
+  { gorIfMetagenerationMatch :: !(Maybe Int64),
+    gorIfGenerationNotMatch :: !(Maybe Int64),
+    gorIfGenerationMatch :: !(Maybe Int64),
+    gorBucket :: !Text,
+    gorUserProject :: !(Maybe Text),
+    gorIfMetagenerationNotMatch :: !(Maybe Int64),
+    gorObject :: !Text,
+    gorProjection :: !(Maybe Projection),
+    gorGeneration :: !(Maybe Int64)
+  }
+  deriving stock (Eq, Show, Generic)
+
+mkParam :: (ToHttpApiData a) => Text -> Maybe a -> Req.Option scheme
+mkParam name = maybe mempty (name =:)
+
+-- | Class to retrieve HTTP optional params from request objects.
+class ToReqOption a where
+  toReqOption :: a -> Req.Option scheme
+
+instance ToReqOption GetObjectReq where
+  toReqOption gor =
+    mkParam "ifMetagenerationMatch" (gorIfMetagenerationMatch gor)
+      <> mkParam "ifGenerationNotMatch" (gorIfGenerationNotMatch gor)
+      <> mkParam "ifGenerationMatch" (gorIfGenerationMatch gor)
+      <> mkParam "userProject" (gorUserProject gor)
+      <> mkParam "ifMetagenerationNotMatch" (gorIfMetagenerationNotMatch gor)
+      <> mkParam "projection" (gorProjection gor)
+      <> mkParam "generation" (gorGeneration gor)
 
 -- | Object is url encoded by this function.
 getObject ::
   MonadGSimple m =>
-  -- | Bucket name
-  Text ->
-  -- | Object name
-  Text ->
-  -- | Start with @defaultGetObjectOptions@
-  GetObjectOptions ->
+  -- | Get Object parameters
+  GetObjectReq ->
   m ObjectBody
-getObject bucket object opts = do
+getObject gor = do
   gh <- getGHandleM
   let getObjScopes =
         Scopes $
@@ -77,12 +121,14 @@ getObject bucket object opts = do
                   "https://www.googleapis.com/auth/devstorage.read_only",
                   "https://www.googleapis.com/auth/devstorage.read_write"
                 ]
-      downloadUrl = https "storage.googleapis.com" /: "storage" /: "v1" /: "b" /: bucket /: "o" /: object
+      -- TODO url encode object name here.
+      downloadUrl = https "storage.googleapis.com" /: "storage" /: "v1" /: "b" /: gorBucket gor /: "o" /: gorObject gor
 
   token <- retrieveTokenFromStore (gHandleStore gh) getObjScopes
   runReq defaultHttpConfig $ do
     let params =
           oAuth2Bearer (encodeUtf8 $ coerce @AccessToken @Text (oAuthTokenAccess token))
+            <> toReqOption gor
             <> "alt" =: ("media" :: Text)
     reqBr
       GET
@@ -95,24 +141,91 @@ data ObjectBody
   = OBBytes ByteString
   | OBStream Stream
 
-data PutObjectOptions = PutObjectOptions {}
-  deriving stock (Eq, Show)
+-- | Apply a predefined set of access controls to this object.
+data ObjectsInsertPredefinedACL
+  = -- | @authenticatedRead@
+    -- Object owner gets OWNER access, and allAuthenticatedUsers get READER
+    -- access.
+    OIPAAuthenticatedRead
+  | -- | @bucketOwnerFullControl@
+    -- Object owner gets OWNER access, and project team owners get OWNER
+    -- access.
+    OIPABucketOwnerFullControl
+  | -- | @bucketOwnerRead@
+    -- Object owner gets OWNER access, and project team owners get READER
+    -- access.
+    OIPABucketOwnerRead
+  | -- | @private@
+    -- Object owner gets OWNER access.
+    OIPAPrivate
+  | -- | @projectPrivate@
+    -- Object owner gets OWNER access, and project team members get access
+    -- according to their roles.
+    OIPAProjectPrivate
+  | -- | @publicRead@
+    -- Object owner gets OWNER access, and allUsers get READER access.
+    OIPAPublicRead
+  deriving stock (Eq, Ord, Enum, Read, Show, Generic)
 
-defaultPutObjectOptions :: PutObjectOptions
-defaultPutObjectOptions = PutObjectOptions {}
+instance Hashable ObjectsInsertPredefinedACL
 
+instance FromHttpApiData ObjectsInsertPredefinedACL where
+  parseQueryParam = \case
+    "authenticatedRead" -> Right OIPAAuthenticatedRead
+    "bucketOwnerFullControl" -> Right OIPABucketOwnerFullControl
+    "bucketOwnerRead" -> Right OIPABucketOwnerRead
+    "private" -> Right OIPAPrivate
+    "projectPrivate" -> Right OIPAProjectPrivate
+    "publicRead" -> Right OIPAPublicRead
+    x -> Left ("Unable to parse ObjectsInsertPredefinedACL from: " <> x)
+
+instance ToHttpApiData ObjectsInsertPredefinedACL where
+  toQueryParam = \case
+    OIPAAuthenticatedRead -> "authenticatedRead"
+    OIPABucketOwnerFullControl -> "bucketOwnerFullControl"
+    OIPABucketOwnerRead -> "bucketOwnerRead"
+    OIPAPrivate -> "private"
+    OIPAProjectPrivate -> "projectPrivate"
+    OIPAPublicRead -> "publicRead"
+
+-- | Stores a new object and metadata.
+data InsertObjectReq = InsertObjectReq
+  { iorIfMetagenerationMatch :: !(Maybe Int64),
+    iorIfGenerationNotMatch :: !(Maybe Int64),
+    iorIfGenerationMatch :: !(Maybe Int64),
+    iorPredefinedACL :: !(Maybe ObjectsInsertPredefinedACL),
+    iorBucket :: !Text,
+    -- iorPayload :: !Object,
+    iorBody :: !ObjectBody,
+    iorUserProject :: !(Maybe Text),
+    iorName :: !Text,
+    iorIfMetagenerationNotMatch :: !(Maybe Int64),
+    iorContentEncoding :: !(Maybe Text),
+    iorKmsKeyName :: !(Maybe Text),
+    iorProjection :: !(Maybe Projection)
+  }
+  deriving stock (Generic)
+
+instance ToReqOption InsertObjectReq where
+  toReqOption ior =
+    mkParam "ifMetagenerationMatch" (iorIfMetagenerationMatch ior)
+      <> mkParam "ifGenerationNotMatch" (iorIfGenerationNotMatch ior)
+      <> mkParam "ifGenerationMatch" (iorIfGenerationMatch ior)
+      <> mkParam "userProject" (iorUserProject ior)
+      <> mkParam "ifMetagenerationNotMatch" (iorIfMetagenerationNotMatch ior)
+      <> mkParam "projection" (iorProjection ior)
+      <> mkParam "kmsKeyName" (iorKmsKeyName ior)
+      <> mkParam "contentEncoding" (iorContentEncoding ior)
+      <> mkParam "name" (Just $ iorName ior)
+      <> mkParam "uploadType" (Just ("media" :: Text))
+
+-- | Currently only supports simple uploads (i.e. data only, with no metadata)
 putObject ::
   MonadGSimple m =>
-  -- | Bucket
-  Text ->
-  -- | Object
-  Text ->
-  -- | Object content
-  ObjectBody ->
-  -- | Start with @defaultPutObjectOptions@
-  PutObjectOptions ->
+  -- | Object parameters
+  InsertObjectReq ->
   m ()
-putObject bucket object body opts = do
+putObject ior = do
   gh <- getGHandleM
   let putObjScopes =
         Scopes $
@@ -126,11 +239,10 @@ putObject bucket object body opts = do
   runReq defaultHttpConfig $ do
     let params =
           oAuth2Bearer (encodeUtf8 $ coerce @AccessToken @Text (oAuthTokenAccess token))
-            <> "uploadType" =: ("media" :: Text)
-            <> "name" =: object
-        uploadUrl = https "storage.googleapis.com" /: "upload" /: "storage" /: "v1" /: "b" /: bucket /: "o"
+            <> toReqOption ior
+        uploadUrl = https "storage.googleapis.com" /: "upload" /: "storage" /: "v1" /: "b" /: iorBucket ior /: "o"
 
-    case body of
+    case iorBody ior of
       OBBytes bs ->
         void $
           req
